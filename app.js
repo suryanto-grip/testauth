@@ -3,7 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const app = express();
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const bycript = require("bcrypt");
 
 mongoose.connect("mongodb://localhost:27017/userDB");
 
@@ -12,9 +12,8 @@ const userSchema = new mongoose.Schema({
     password : String
 });
 
-userSchema.plugin(encrypt,{secret : process.env.SECRET , encryptedFields : ["password"]});
-
 const userModel = mongoose.model("user", userSchema);
+const salt = 10;
 
 app.use(express.urlencoded({extended : true}));
 app.use(express.static("public"));
@@ -32,18 +31,20 @@ app.route("/register")
 .post((req,res)=>{
     const registerName = req.body.username; 
     const registerPassword = req.body.password;
-    const newUser = new userModel({
-        name : registerName,
-        password: registerPassword
-    });
-
-    newUser.save((err)=>{
-        if(err){
-            res.send(err);
-        }else{
-            res.render("secrets");
-        }
-    });
+    
+    bycript.hash(registerPassword, salt, (err, hash)=>{
+        const newUser = new userModel({
+            name : registerName,
+            password: hash
+        });
+        newUser.save((err)=>{
+            if(err){
+                res.send(err);
+            }else{
+                res.render("secrets");
+            }
+        });
+    });   
 });
 
 app.route("/login")
@@ -52,15 +53,15 @@ app.route("/login")
 })
 .post((req,res)=>{
     const inputName = req.body.username;
-    const inputPassword = req.body.password;
+    let inputPassword = req.body.password;
     userModel.findOne({name : inputName}, (err, foundUser)=>{
         if(!err){
-            if(foundUser != null){
-                if(foundUser.password === inputPassword){
-                    res.render("secrets");
-                }else{
-                    res.send("Wrong Password");
-                }
+            if(foundUser){
+                bycript.compare(inputPassword, foundUser.password, (err, result)=>{
+                    if (result = true){
+                        res.render("secrets");
+                    }
+                });
             }else{
                 res.send("Username Not Found, Please Register First")
             }
